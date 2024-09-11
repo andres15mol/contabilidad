@@ -1,8 +1,10 @@
 from functools import reduce
 from lxml import etree
+from datetime import datetime
 from odoo import api, fields, models, _
 from odoo.exceptions import ValidationError
 from odoo.tools.misc import formatLang
+from markupsafe import Markup
 
 
 class ResPartner(models.Model):
@@ -22,7 +24,7 @@ class ResPartner(models.Model):
         return res
 
     def _get_latest(self):
-        company = self.env.user.company_id
+        company = self.env.company
         for partner in self:
             amls = partner.unreconciled_aml_ids
             latest_date = False
@@ -149,7 +151,7 @@ class ResPartner(models.Model):
         partner = self.commercial_partner_id
         followup_table = ''
         if partner.unreconciled_aml_ids:
-            company = self.env.user.company_id
+            company = self.env.company
             current_date = fields.Date.today()
             report = self.env['report.om_account_followup.report_followup']
             final_res = report._lines_get_with_partner(partner, company.id)
@@ -176,6 +178,7 @@ class ResPartner(models.Model):
                     strbegin = "<TD>"
                     strend = "</TD>"
                     date = aml['date_maturity'] or aml['date']
+                    date = datetime.strptime(date, "%d/%m/%Y").date()
                     if date <= current_date and aml['balance'] > 0:
                         strbegin = "<TD><B>"
                         strend = "</B></TD>"
@@ -195,7 +198,7 @@ class ResPartner(models.Model):
                                 </table>
                                 <center>''' + _(
                     "Amount due") + ''' : %s </center>''' % (total)
-        return followup_table
+        return Markup(followup_table)
 
     def write(self, vals):
         if vals.get("payment_responsible_id", False):
@@ -223,7 +226,7 @@ class ResPartner(models.Model):
 
     def do_button_print(self):
         self.ensure_one()
-        company_id = self.env.user.company_id.id
+        company_id = self.env.company.id
         if not self.env['account.move.line'].search(
                 [('partner_id', '=', self.id),
                  ('account_id.account_type', '=', 'asset_receivable'),
@@ -250,7 +253,7 @@ class ResPartner(models.Model):
         return self.do_partner_print(wizard_partner_ids, data)
 
     def _get_amounts_and_date(self):
-        company = self.env.user.company_id
+        company = self.env.company
         current_date = fields.Date.today()
         for partner in self:
             worst_due_date = False
@@ -268,7 +271,7 @@ class ResPartner(models.Model):
             partner.payment_earliest_due_date = worst_due_date
 
     def _get_followup_overdue_query(self, args, overdue_only=False):
-        company_id = self.env.user.company_id.id
+        company_id = self.env.company.id
         having_clauses = []
         having_values = []
 
@@ -316,7 +319,7 @@ class ResPartner(models.Model):
 
     def _payment_earliest_date_search(self, operator, operand):
         args = [('payment_earliest_due_date', operator, operand)]
-        company_id = self.env.user.company_id.id
+        company_id = self.env.company.id
         having_where_clause = ' AND '.join(
             map(lambda x: "(MIN(l.date_maturity) %s '%%s')" % (x[1]), args))
         having_values = [x[2] for x in args]
